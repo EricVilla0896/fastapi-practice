@@ -8,7 +8,7 @@ dotenv.load_dotenv()
 client = TestClient(app)
 def test_get_applications():
     response = client.get("/applications")
-    assert response.status_code == 200
+    assert response.status_code == 201
     assert isinstance(response.json(), list)
 
 def test_get_nonexistent_application():
