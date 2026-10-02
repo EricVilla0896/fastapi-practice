@@ -8,6 +8,21 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: api_practice
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d api_practice"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -23,9 +38,47 @@ jobs:
           pip install -r requirements.txt
           pip install pytest
 
+      - name: Create database schema
+        env:
+          PGHOST: localhost
+          PGPORT: 5432
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGDATABASE: api_practice
+        run: |
+          psql -c "CREATE SCHEMA api_practice_schema;"
+
+          psql -c "CREATE TABLE api_practice_schema.applications (
+            id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            company varchar(100) NOT NULL,
+            position varchar(100) NOT NULL,
+            salary integer NOT NULL
+          );"
+
+          psql -c "CREATE TABLE api_practice_schema.webhook_events (
+            id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            event_id varchar(255) NOT NULL UNIQUE
+          );"
+
+          psql -c "CREATE TABLE api_practice_schema.analyzed_jobs (
+            id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            title varchar(200) NOT NULL,
+            company varchar(200) NOT NULL,
+            description text NOT NULL,
+            category varchar(100) NOT NULL,
+            seniority varchar(50) NOT NULL,
+            relevant boolean NOT NULL,
+            reason text NOT NULL
+          );"
+
       - name: Run tests
         env:
           API_KEY: ${{ secrets.API_KEY }}
           WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_NAME: api_practice
+          DB_USER: postgres
+          DB_PASSWORD: postgres
         run: python -m pytest
