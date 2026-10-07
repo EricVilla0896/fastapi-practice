@@ -4,8 +4,9 @@ import dotenv, os, uuid
 from types import SimpleNamespace
 
 dotenv.load_dotenv()
-
 client = TestClient(app)
+
+
 def test_get_applications():
     response = client.get("/applications")
     assert response.status_code == 200
@@ -173,3 +174,208 @@ def test_analyze_jobs(monkeypatch):
     assert data["jobs"][0]["category"] == "Junior Python/Backend Developer"
     assert data["jobs"][0]["seniority"] == "Junior"
     assert data["jobs"][0]["relevant"] is True
+
+def test_rag_query(monkeypatch):
+    def mock_question_embedding(*args, **kwargs):
+        return SimpleNamespace(
+            embeddings = [
+                SimpleNamespace(
+                    values= [1.0, 2.0, 3.0]
+                )
+            ]
+        )
+
+    context  = ["Employees may work remotely up to 3 days per week.", "Remote work must be approved by the employee's manager."]
+    def mock_search_documents(query_embedding, top_k=5, max_distance=0.30, source=None):
+        return [
+            (context[0], 0.20, "company_policies.pdf", 1, 1),
+            (context[1], 0.25,"company_policies.pdf", 2, 1)
+        ]
+
+    def mock_rerank_results(question, search_results, top_k=2):
+        return [
+            (context[0], 0.20, "company_policies.pdf", 1, 1),
+            (context[1], 0.25, "company_policies.pdf", 2, 1)
+        ]
+
+    received_prompt = {}
+    def mock_gemini(*args, **kwargs):
+        received_prompt["input"] = kwargs["input"]
+        return SimpleNamespace(
+            output_text="Test successful"
+        )
+
+    monkeypatch.setattr(
+        "main.gemini_client.models.embed_content",
+        mock_question_embedding
+    )
+
+    monkeypatch.setattr(
+        "main.search_documents",
+        mock_search_documents
+    )
+
+    monkeypatch.setattr(
+        "main.rerank_results",
+        mock_rerank_results
+    )
+
+    monkeypatch.setattr(
+        "main.gemini_client.interactions.create",
+        mock_gemini
+    )
+    question = "Test question"
+    response = client.post("/rag/query", json={
+        "question": question
+    })
+    assert response.status_code == 200
+    data = response.json()
+    assert data["answer"] == "Test successful"
+    assert question in received_prompt["input"]
+    assert context[0] in received_prompt["input"]
+    assert context[1] in received_prompt["input"]
+    assert isinstance(data["sources"], list)
+
+def test_rag_query_no_documents(monkeypatch):
+    def mock_question_embedding(*args, **kwargs):
+        return SimpleNamespace(
+            embeddings=[
+                SimpleNamespace(
+                    values=[1.0, 2.0, 3.0]
+                )
+            ]
+        )
+
+    def mock_search_documents(query_embedding, top_k=5, max_distance=0.30, source=None):
+        return []
+
+    monkeypatch.setattr(
+        "main.gemini_client.models.embed_content",
+        mock_question_embedding
+    )
+
+    monkeypatch.setattr(
+        "main.search_documents",
+        mock_search_documents
+    )
+    response = client.post("/rag/query", json={
+        "question": "Test question"
+    })
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["answer"] == "I don't have enough information to answer that question"
+    assert data["sources"] == []
+
+def test_rag_query_gemini_failure(monkeypatch):
+    def mock_question_embedding(*args, **kwargs):
+        return SimpleNamespace(
+            embeddings=[
+                SimpleNamespace(
+                    values=[1.0, 2.0, 3.0]
+                )
+            ]
+        )
+
+    context = ["Employees may work remotely up to 3 days per week.", "Remote work must be approved by the employee's manager."]
+    def mock_search_documents(query_embedding, top_k=5, max_distance=0.30, source=None):
+        return [
+            (context[0], 0.20, "company_policies.pdf", 1, 1),
+            (context[1], 0.25, "company_policies.pdf", 2, 1)
+        ]
+
+    def mock_rerank_results(question, search_results, top_k=2):
+        return [
+            (context[0], 0.20, "company_policies.pdf", 1, 1),
+            (context[1], 0.25, "company_policies.pdf", 2, 1)
+        ]
+
+    def mock_gemini(*args, **kwargs):
+        raise ValueError("Mock failure")
+
+    monkeypatch.setattr(
+        "main.gemini_client.models.embed_content",
+        mock_question_embedding
+    )
+
+    monkeypatch.setattr(
+        "main.search_documents",
+        mock_search_documents
+    )
+
+    monkeypatch.setattr(
+        "main.rerank_results",
+        mock_rerank_results
+    )
+
+    monkeypatch.setattr(
+        "main.gemini_client.interactions.create",
+        mock_gemini
+    )
+    response = client.post("/rag/query", json={
+        "question": "Test question"
+    })
+    assert response.status_code == 502
+    data = response.json()
+    assert "Mock failure" in data["detail"]
+
+def test_rag_query_no_query():
+    response = client.post("/rag/query", json={
+        "question": ""
+    })
+    assert response.status_code == 422
+
+def test_rag_query_gemini_no_output(monkeypatch):
+    def mock_question_embedding(*args, **kwargs):
+        return SimpleNamespace(
+            embeddings = [
+                SimpleNamespace(
+                    values= [1.0, 2.0, 3.0]
+                )
+            ]
+        )
+
+    context  = ["Employees may work remotely up to 3 days per week.", "Remote work must be approved by the employee's manager."]
+    def mock_search_documents(query_embedding, top_k=5, max_distance=0.30, source=None):
+        return [
+            (context[0], 0.20, "company_policies.pdf", 1, 1),
+            (context[1], 0.25, "company_policies.pdf", 2, 1)
+        ]
+
+    def mock_rerank_results(question, search_results, top_k=2):
+        return [
+            (context[0], 0.20, "company_policies.pdf", 1, 1),
+            (context[1], 0.25, "company_policies.pdf", 2, 1)
+        ]
+
+    def mock_gemini(*args, **kwargs):
+        return SimpleNamespace(
+            output_text=None
+        )
+
+    monkeypatch.setattr(
+        "main.gemini_client.models.embed_content",
+        mock_question_embedding
+    )
+
+    monkeypatch.setattr(
+        "main.search_documents",
+        mock_search_documents
+    )
+
+    monkeypatch.setattr(
+        "main.rerank_results",
+        mock_rerank_results
+    )
+
+    monkeypatch.setattr(
+        "main.gemini_client.interactions.create",
+        mock_gemini
+    )
+
+    response = client.post("/rag/query", json={
+        "question": "Test question"
+    })
+    assert response.status_code == 404
+    data = response.json()
+    assert "LLM API returned no structured response" in data["detail"]

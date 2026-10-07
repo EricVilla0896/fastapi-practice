@@ -5,9 +5,14 @@ from typing import Literal
 from database import get_connection
 from dotenv import load_dotenv
 from google import genai
+from google.genai import types
+from pgvector import Vector
+from database_docker import search_documents, rerank_results
+
 
 load_dotenv()
 gemini_client = genai.Client()
+
 app = FastAPI()
 
 
@@ -60,6 +65,20 @@ class AnalyzedJob(BaseModel):
     seniority: str
     relevant: bool
     reason: str
+
+class RAGQuery(BaseModel):
+    question: str = Field(min_length=1)
+    source: str | None = None
+
+class RAGSource(BaseModel):
+    content: str = Field(min_length=1)
+    source: str = Field(min_length=1)
+    chunk_id: int = Field(ge=1)
+    page: int = Field(ge=1)
+
+class RAGResponse(BaseModel):
+    answer: str
+    sources: list[RAGSource]
 
 
 async def analyze_job(jobs):
@@ -312,7 +331,7 @@ def analyze_webhook_application(application: Webhook):
         """
     try:
         response = gemini_client.interactions.create(
-            model="gemini-3.8-flash",
+            model="gemini-3.5-flash-liteh",
             input=prompt,
             response_format={
                 "type": "text",
@@ -392,6 +411,86 @@ async def analyze_jobs(query: str):
     return {
         "query": query,
         "jobs": jobs_list
+    }
+
+@app.post("/rag/query", response_model=RAGResponse)
+def rag_query(data: RAGQuery):
+
+    result = gemini_client.models.embed_content(
+        model="gemini-embedding-2",
+        contents=data.question,
+        config=types.EmbedContentConfig(output_dimensionality=1536)
+    )
+
+    if not result.embeddings:
+        raise HTTPException(status_code=404, detail="No embeddings found")
+
+    [embedding_obj] = result.embeddings
+
+    question_embedding = Vector(embedding_obj.values)
+
+    search_results = search_documents(
+        question_embedding,
+        top_k=5,
+        max_distance=0.3,
+        source=data.source
+    )
+
+    if not search_results:
+        return {
+            "answer": "I don't have enough information to answer that question",
+            "sources": []
+        }
+
+    reranked_results = rerank_results(
+        data.question,
+        search_results,
+        top_k=2
+    )
+
+    context = "\n".join(content for content, distance, source, chunk_id, page in reranked_results)
+
+    prompt = f"""
+        Answer the question using only the provided context.
+        Rules:
+        - Use only information explicitly stated in the context.
+        - Do not use outside knowledge.
+        - If the context does not contain enough information to answer the question, say:
+          "I don't have enough information to answer that question."
+        Context:
+        {context}
+        
+        Question:
+        {data.question}
+    """
+
+    try:
+        response = gemini_client.interactions.create(
+            model="gemini-3.5-flash-lite",
+            input=prompt,
+            timeout=10
+        )
+
+        if response.output_text is None:
+            raise HTTPException(status_code=404, detail="LLM API returned no structured response")
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+    sources = [{
+        "content": content,
+        "source": source,
+        "chunk_id": chunk_id,
+        "page": page
+    } for content, distance, source, chunk_id, page in reranked_results
+    ]
+
+    return {
+        "answer": response.output_text,
+        "sources": sources
     }
 
 @app.get("/jobs/analyzed", response_model=list[AnalyzedJob])
