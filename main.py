@@ -127,7 +127,7 @@ async def analyze_job(jobs):
         )
 
 
-@app.post("/applications-test-cd", response_model=ApplicationResponse, status_code=201, dependencies=[Depends(authenticate_api_key)])
+@app.post("/applications", response_model=ApplicationResponse, status_code=201, dependencies=[Depends(authenticate_api_key)])
 def create_application(application: Application):
     with get_connection() as connection:
         cursor = connection.cursor()
