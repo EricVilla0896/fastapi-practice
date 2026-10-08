@@ -326,7 +326,7 @@ pip install -r requirements.txt
 
 Configure the environment variables and create the required PostgreSQL schema and tables.
 
-## Running with Uvicorn
+## Running with uvicorn
 
 Start the development server:
 
