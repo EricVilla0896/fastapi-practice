@@ -82,3 +82,43 @@ jobs:
           DB_USER: postgres
           DB_PASSWORD: postgres
         run: python -m pytest
+
+  build:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/ericvilla0896/fastapi-practice:latest
+
+  deploy:
+    needs: build
+    runs-on: self-hosted
+
+    steps:
+      - name: Pull latest image
+        run: docker pull ghcr.io/ericvilla0896/fastapi-practice:latest
+
+      - name: Restart deployment
+        run: |
+          cd ~/fastapi-deployment
+          docker compose up -d --force-recreate api
