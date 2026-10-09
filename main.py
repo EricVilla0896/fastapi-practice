@@ -12,8 +12,12 @@ from database_docker import search_documents, rerank_results
 
 load_dotenv()
 gemini_client = genai.Client()
-# Test comment
+
 app = FastAPI()
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy"}
 
 
 def authenticate_api_key(x_api_key: str | None = Header(default=None)):
