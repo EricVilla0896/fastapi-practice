@@ -2,7 +2,7 @@ import psycopg, os
 from pgvector.psycopg import register_vector
 from sentence_transformers import CrossEncoder
 
-reranker = CrossEncoder("BAAI/bge-reranker-base")
+reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L6-v2")
 
 def get_connection():
     conn = psycopg.connect(

@@ -1,0 +1,11 @@
+.venv
+.git
+.idea
+pycache
+.pytest_cache
+.env
+.ipynb_checkpoints
+*.ipynb
+rag_evaluation.py
+rag_practice.py
+tests/
