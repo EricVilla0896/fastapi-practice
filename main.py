@@ -335,7 +335,7 @@ def analyze_webhook_application(application: Webhook):
         """
     try:
         response = gemini_client.interactions.create(
-            model="gemini-3.5-flash-liteh",
+            model="gemini-3.5-flash-lite",
             input=prompt,
             response_format={
                 "type": "text",
