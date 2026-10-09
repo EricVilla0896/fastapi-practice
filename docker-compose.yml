@@ -1,6 +1,6 @@
 services:
   api:
-    build: .
+    image: ghcr.io/ericvilla0896/fastapi-practice:latest
     ports:
       - "8000:8000"
     environment:
@@ -14,6 +14,12 @@ services:
       DB_PASSWORD: postgres
     depends_on:
       - db
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
   db:
     image: pgvector/pgvector:pg18
@@ -21,10 +27,10 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: api_practice
-    ports:
-      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql
-      - ./db_schema/fast_api_schema.sql:/docker-entrypoint-initdb.d/fast_api_schema.sql
+      - ./db_schema/00_extensions.sql:/docker-entrypoint-initdb.d/00_extensions.sql
+      - ./db_schema/fast_api_schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
+
 volumes:
   postgres_data:

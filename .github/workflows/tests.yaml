@@ -115,12 +115,26 @@ jobs:
     runs-on: self-hosted
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Prepare deployment configuration
+        run: |
+          mkdir -p ~/fastapi-deployment/db_schema
+          cp docker-compose.yml ~/fastapi-deployment/compose.yml
+          cp db_schema/00_extensions.sql ~/fastapi-deployment/db_schema/
+          cp db_schema/fast_api_schema.sql ~/fastapi-deployment/db_schema/
+
       - name: Pull latest image
         run: docker pull ghcr.io/ericvilla0896/fastapi-practice:latest
 
-      - name: Restart deployment
+      - name: Deploy API
         env:
+          API_KEY: ${{ secrets.API_KEY }}
+          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           cd ~/fastapi-deployment
-          docker compose up -d --force-recreate api
+          docker compose -f compose.yml config --quiet
+          docker compose -f compose.yml up -d --force-recreate api
+          docker compose -f compose.yml ps
