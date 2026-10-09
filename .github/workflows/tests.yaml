@@ -119,6 +119,8 @@ jobs:
         run: docker pull ghcr.io/ericvilla0896/fastapi-practice:latest
 
       - name: Restart deployment
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           cd ~/fastapi-deployment
           docker compose up -d --force-recreate api
